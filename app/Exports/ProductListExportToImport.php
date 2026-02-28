@@ -1,0 +1,121 @@
+<?php
+
+namespace App\Exports;
+
+use Illuminate\Contracts\View\View;
+use Maatwebsite\Excel\Concerns\Exportable;
+use Maatwebsite\Excel\Concerns\FromView;
+use Maatwebsite\Excel\Concerns\ShouldAutoSize;
+use Maatwebsite\Excel\Concerns\WithColumnWidths;
+use Maatwebsite\Excel\Concerns\WithEvents;
+use Maatwebsite\Excel\Concerns\WithHeadings;
+use Maatwebsite\Excel\Concerns\WithStyles;
+use Maatwebsite\Excel\Events\AfterSheet;
+use PhpOffice\PhpSpreadsheet\Style\Alignment;
+use PhpOffice\PhpSpreadsheet\Style\Border;
+use PhpOffice\PhpSpreadsheet\Worksheet\Drawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\MemoryDrawing;
+use PhpOffice\PhpSpreadsheet\Worksheet\Worksheet;
+
+class ProductListExportToImport implements FromView, ShouldAutoSize, WithStyles,WithColumnWidths ,WithHeadings
+{
+    use Exportable;
+    protected $data;
+
+    public function __construct($data) {
+        $this->data = $data;
+    }
+
+    public function view(): View
+    {
+        if(isset($this->data['to-import'])){
+            return view('file-exports.product-list-to-import', [
+                'data' => $this->data,
+            ]);
+        }else{
+            
+            return view('file-exports.product-list', [
+                'data' => $this->data,
+            ]);
+        }
+    }
+
+    public function columnWidths(): array
+    {
+        return [
+            'A' => 15,
+            'C' => 25,
+            'D' => 25,
+            'F' => 50,
+            'G' => 20,
+            'H' => 20,
+            'I' => 20,
+            'J' => 20,
+            'R' => 25,
+        ];
+    }
+
+    public function styles(Worksheet $sheet) {
+        $sheet->getStyle('A1:A3')->getFont()->setBold(true);
+        $sheet->getStyle('A3:S3')->getFont()->setBold(true)->getColor()
+        ->setARGB('FFFFFF');
+
+        $sheet->getStyle('A3:S3')->getFill()->applyFromArray([
+            'fillType' => 'solid',
+            'rotation' => 0,
+            'color' => ['rgb' => '063C93'],
+        ]);
+
+        $sheet->setShowGridlines(false);
+        return [
+            // Define the style for cells with data
+            'A1:S'.$this->data['products']->count() + 3 => [
+                'borders' => [
+                    'allBorders' => [
+                        'borderStyle' => Border::BORDER_THIN,
+                        'color' => ['argb' => '000000'], // Specify the color of the border (optional)
+                    ],
+                ],
+                'alignment' => [
+                    'wrapText' => true,
+                ],
+            ],
+        ];
+    }
+    public function setImage($workSheet) {
+        $this->data['products']->each(function($item,$index) use($workSheet) {
+            $tempImagePath = null;
+            $filePath = 'product/thumbnail/'.$item->thumbnail_full_url['key'];
+            $fileCheck = fileCheck(disk:'public',path: $filePath);
+            if($item->thumbnail_full_url['path'] && !$fileCheck){
+                $tempImagePath = getTemporaryImageForExport($item->thumbnail_full_url['path']);
+                $imagePath = getImageForExport($item->thumbnail_full_url['path']);
+                $drawing = new MemoryDrawing();
+                $drawing->setImageResource($imagePath);
+            }else{
+                $drawing = new Drawing();
+                $drawing->setPath(is_file(storage_path('app/public/'.$filePath)) ? storage_path('app/public/'.$filePath) : public_path('assets/back-end/img/products.png'));
+            }
+            $drawing->setName($item->name);
+            $drawing->setDescription($item->name);
+            $drawing->setHeight(50);
+            $drawing->setOffsetX(45);
+            $drawing->setOffsetY(70);
+            $drawing->setResizeProportional(true);
+            $index+=4;
+            $drawing->setCoordinates("B$index");
+            $drawing->setWorksheet($workSheet);
+            if($tempImagePath){
+                imagedestroy($tempImagePath);
+            }
+        });
+    }
+
+    
+    public function headings(): array
+    {
+        return [
+           '1',
+        ];
+    }
+}
